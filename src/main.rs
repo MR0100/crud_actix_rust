@@ -1,61 +1,38 @@
+use actix_web::{App, HttpServer, web};
+
+// import controller and schema crates to use services and structs defined.
+use rust_crud_apis::controller::user_controller::{create_user, get_users};
+use rust_crud_apis::schema::{db_schema::UserDb, user_schema::User};
+
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
 
-use actix_web::{App, HttpResponse, HttpServer, Responder, error::ErrorNotFound, web};
-use serde::Serialize;
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct User {
-    name: String,
-}
-
-#[derive(Serialize)]
-struct CreateUserResponse {
-    id: u32,
-    name: String,
-}
-
-type UserDb = Arc<Mutex<HashMap<u32, User>>>;
-
-#[actix_web::get("/users/{id}")]
-async fn get_users(user_id: web::Path<u32>, db: web::Data<UserDb>) -> impl Responder {
-    let user_id = user_id.into_inner();
-    let db = db.lock().unwrap();
-
-    match db.get(&user_id) {
-        Some(user_data) => Ok(HttpResponse::Ok().json(user_data)),
-        None => Err(ErrorNotFound("User Not Found!")),
-    }
-}
-
-#[actix_web::post("/users")]
-async fn create_user(user_data: web::Json<User>, db: web::Data<UserDb>) -> impl Responder {
-    let mut db = db.lock().unwrap();
-    let new_id = db.keys().max().unwrap_or(&0).checked_add(1).unwrap();
-
-    let name = user_data.name.clone();
-
-    db.insert(new_id, user_data.into_inner());
-
-    HttpResponse::Created().json(CreateUserResponse { id: new_id, name })
-}
-
+// use macro to make the main function asynchronous
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    let host = "localhost";
     let port = 8080;
 
+    // Runtime Database Reference.
+    // Arc<Mutex<HashMap>>: Mutable Smart Pointer on HashMap.
+    // HashMap contains two fields -> Key : Value -> key = u32 : value = User type
     let user_db: UserDb = Arc::new(Mutex::new(HashMap::<u32, User>::new()));
 
+    // create new server using the actix_web::HttpServer crate
+    // bind to the host and port.
+    // define the number of threads (workers)
+    // execute the server to listen request and send response.
     HttpServer::new(move || {
         let app_data = web::Data::new(user_db.clone());
+
         App::new()
             .app_data(app_data)
             .service(get_users)
             .service(create_user)
     })
-    .bind(("127.0.0.1:", port))?
+    .bind(format!("{}:{}", host, port))?
     .workers(3)
     .run()
     .await
